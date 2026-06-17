@@ -7,10 +7,10 @@ import {
   ArrowLeft,
   Shield,
   Loader2,
-  CheckCircle2,
   AlertCircle,
   Smartphone,
   CreditCard,
+  CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Navbar } from '../components/Navbar';
@@ -29,6 +29,7 @@ export function CheckoutPage() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [bookingNotes, setBookingNotes] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,21 @@ export function CheckoutPage() {
   const businessId = searchParams.get('businessId');
 
   useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+        if (user.user_metadata?.full_name) {
+          setCustomerName(user.user_metadata.full_name);
+        }
+        if (user.email) {
+          setCustomerEmail(user.email);
+        }
+      }
+    };
+
+    checkUser();
+
     if (serviceId && businessId && date && time) {
       fetchData();
     } else {
@@ -85,33 +101,51 @@ export function CheckoutPage() {
 
   const handlePayment = async () => {
     if (!selectedPayment || !customerName || !customerPhone || !business || !service || !date || !time) {
+      setError('Please fill in all required fields and select a payment method.');
+      return;
+    }
+
+    if (!currentUserId) {
+      setError('You must be logged in to complete a booking.');
       return;
     }
 
     setProcessing(true);
     setError(null);
 
+    // USALIMISHI WA NAMBA YA SIMU
+    const cleanedPhone = customerPhone.replace(/\+/g, '').replace(/\s+/g, '');
+
     try {
-      const payment = await startSnippePayment({
+      // FIX 1: Tunatumia type assertion 'as any' kulazimisha kupitisha userId kama hook yako ya backend inaitaka lakini haikutajwa kwenye interface ya TypeScript kule frontend.
+      const paymentParams: any = {
         businessId: business.id,
         serviceId: service.id,
+        userId: currentUserId, 
         customerName,
-        customerPhone,
+        customerPhone: cleanedPhone, 
         customerEmail: customerEmail || null,
         bookingDate: date,
         bookingTime: time,
         notes: bookingNotes || null,
         paymentMethod: selectedPayment,
         amount: Number(service.price),
-      });
+      };
 
-      if (payment.checkoutUrl) {
+      const payment = await startSnippePayment(paymentParams);
+
+      if (payment?.checkoutUrl) {
         window.location.assign(payment.checkoutUrl);
         return;
       }
 
-      if (['successful', 'success', 'completed'].includes(payment.status)) {
-        navigate(`/booking/success?receipt=${payment.receiptNumber}&business=${business.id}&service=${service.id}&date=${date}&time=${time}&transaction=${payment.transactionReference}`);
+      // FIX 2: Tunasoma 'transactionReference' au tunailazimisha kama 'any' ili kuzuia kosa la mali isiyojulikana (unknown property)
+      const paymentStatus = (payment as any).status || '';
+      const txRef = (payment as any).transactionReference || '';
+      const receiptNum = (payment as any).receiptNumber || '';
+
+      if (['successful', 'success', 'completed'].includes(paymentStatus.toLowerCase())) {
+        navigate(`/booking/success?receipt=${receiptNum}&business=${business.id}&service=${service.id}&date=${date}&time=${time}&transaction=${txRef}`);
         return;
       }
 
@@ -164,7 +198,6 @@ export function CheckoutPage() {
 
       <main className="flex-1 py-8">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Back Button */}
           <Link
             to={`/business/${business.id}`}
             className="inline-flex items-center gap-2 text-gray-600 hover:text-teal-600 mb-6 transition-colors"
@@ -174,7 +207,6 @@ export function CheckoutPage() {
           </Link>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {/* Left - Booking Summary */}
             <div className="md:col-span-1">
               <div className="bg-white rounded-2xl shadow-sm p-6 sticky top-24">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Booking Summary</h2>
@@ -230,7 +262,6 @@ export function CheckoutPage() {
               </div>
             </div>
 
-            {/* Right - Payment Form */}
             <div className="md:col-span-2">
               <div className="bg-white rounded-2xl shadow-sm p-6">
                 <div className="flex items-center gap-2 mb-6">
@@ -245,7 +276,6 @@ export function CheckoutPage() {
                   </div>
                 )}
 
-                {/* Customer Details */}
                 <div className="mb-8">
                   <h3 className="font-semibold text-gray-900 mb-4">Your Details</h3>
                   <div className="grid sm:grid-cols-2 gap-4">
@@ -270,7 +300,7 @@ export function CheckoutPage() {
                         type="tel"
                         value={customerPhone}
                         onChange={(e) => setCustomerPhone(e.target.value)}
-                        placeholder="+255 XXX XXX XXX"
+                        placeholder="e.g. 0712345678"
                         className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none"
                         disabled={processing}
                       />
@@ -304,13 +334,13 @@ export function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* Payment Methods */}
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-4">Select Payment Method</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {paymentMethods.map((method) => (
                       <button
                         key={method.id}
+                        type="button"
                         onClick={() => setSelectedPayment(method.id)}
                         disabled={processing}
                         className={`relative p-4 rounded-xl border-2 text-left transition-all flex items-center gap-4 ${
@@ -337,20 +367,16 @@ export function CheckoutPage() {
                     ))}
                   </div>
 
-                  {/* Mobile Money Instructions */}
                   {selectedPayment && selectedPayment !== 'card' && (
                     <div className="mt-4 p-4 bg-blue-50 rounded-xl">
                       <div className="flex items-start gap-3">
                         <Smartphone className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="font-medium text-blue-900">
-                            {
-                              paymentMethods.find((m) => m.id === selectedPayment)
-                                ?.name
-                            } Payment
+                            {paymentMethods.find((m) => m.id === selectedPayment)?.name} Payment
                           </p>
                           <p className="text-sm text-blue-700 mt-1">
-                            After clicking "Pay Now", you will receive a payment prompt
+                            After clicking "Pay Now", you will receive a secure payment prompt
                             on your phone. Enter your PIN to confirm the transaction.
                           </p>
                         </div>
@@ -358,7 +384,6 @@ export function CheckoutPage() {
                     </div>
                   )}
 
-                  {/* Card Payment Note */}
                   {selectedPayment === 'card' && (
                     <div className="mt-4 p-4 bg-purple-50 rounded-xl">
                       <div className="flex items-start gap-3">
@@ -367,7 +392,7 @@ export function CheckoutPage() {
                           <p className="font-medium text-purple-900">Card Payment</p>
                           <p className="text-sm text-purple-700 mt-1">
                             Secure payment processed via Snippe. Your card details are
-                            encrypted and protected.
+                            encrypted and fully protected.
                           </p>
                         </div>
                       </div>
@@ -375,9 +400,9 @@ export function CheckoutPage() {
                   )}
                 </div>
 
-                {/* Pay Button */}
                 <div className="mt-8">
                   <button
+                    type="button"
                     onClick={handlePayment}
                     disabled={!selectedPayment || !customerName || !customerPhone || processing}
                     className="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -399,7 +424,6 @@ export function CheckoutPage() {
                   </p>
                 </div>
 
-                {/* Snippe Badge */}
                 <div className="mt-6 flex items-center justify-center gap-2 text-gray-400">
                   <Shield className="h-4 w-4" />
                   <span className="text-sm">Secured by Snippe</span>
@@ -410,7 +434,6 @@ export function CheckoutPage() {
         </div>
       </main>
 
-      {/* Processing Overlay */}
       {processing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 text-center">
