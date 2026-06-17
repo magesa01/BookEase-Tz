@@ -1,7 +1,9 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
-import CheckoutPage from './pages/CheckoutPage'; // Imesafishwa
+import { SearchResultsPage } from './pages/SearchResultsPage'; // Ongeza hii
+import CheckoutPage from './pages/CheckoutPage';
 import { BookingSuccessPage } from './pages/BookingSuccessPage';
+import { BusinessProfilePage } from './pages/BusinessProfilePage'; // HII NDIO ILIKOSEKANA
 import { CustomerDashboardPage } from './pages/CustomerDashboardPage';
 import BusinessDashboardPage from './pages/BusinessDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -13,6 +15,8 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/search" element={<SearchResultsPage />} />
+        <Route path="/business/:id" element={<BusinessProfilePage />} /> {/* HII NI MUHIMU */}
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/booking/success" element={<BookingSuccessPage />} />
         <Route path="/dashboard/customer" element={<CustomerDashboardPage />} />
