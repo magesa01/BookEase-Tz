@@ -49,6 +49,19 @@ function getPaymentUrl(payload: Record<string, unknown>) {
   );
 }
 
+// Kazi ya kusafisha namba ya simu iende kwa format ya 255
+function formatTanzanianPhoneNumber(phone: string): string {
+  let cleaned = phone.replace(/[\s\-\+\(\)]/g, ''); // Ondoa space, mabano na alama ya jumlisha
+  
+  if (cleaned.startsWith('0')) {
+    cleaned = '255' + cleaned.substring(1);
+  } else if (cleaned.startsWith('7') || cleaned.startsWith('6') || cleaned.startsWith('8')) {
+    cleaned = '255' + cleaned;
+  }
+  
+  return cleaned;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -105,13 +118,16 @@ Deno.serve(async (req: Request) => {
   const transactionReference = `SNP-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // Kusafisha namba ya simu kwa ajili ya Snippe API
+  const formattedPhone = formatTanzanianPhoneNumber(customerPhone);
+
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .insert({
       business_id: businessId,
       service_id: serviceId,
       customer_name: customerName,
-      customer_phone: customerPhone,
+      customer_phone: customerPhone, // Tunahifadhi namba asili ya mteja kwenye DB yetu
       customer_email: customerEmail || null,
       booking_date: bookingDate,
       booking_time: bookingTime,
@@ -130,11 +146,14 @@ Deno.serve(async (req: Request) => {
 
   const successUrl = `${origin}/booking/success?receipt=${booking.receipt_number}&business=${businessId}&service=${serviceId}&date=${bookingDate}&time=${bookingTime}&transaction=${transactionReference}`;
   const callbackUrl = `${supabaseUrl}/functions/v1/snippe-webhook`;
-  const snippeBaseUrl = Deno.env.get('SNIPPE_API_BASE_URL') || 'https://api.snippe.co/v1';
+  
+  // Kutatua typo zote za mwanzo za SNTPPE na SNIPPE
+  const rawBaseUrl = Deno.env.get('SNIPPE_API_BASE_URL') || Deno.env.get('SNTPPE_API_BASE_URL') || 'https://api.snippe.io';
+  const snippeBaseUrl = rawBaseUrl.replace(/\/$/, '');
 
   let snippeResponse: Response;
   try {
-    snippeResponse = await fetch(`${snippeBaseUrl.replace(/\/$/, '')}/payments`, {
+    snippeResponse = await fetch(`${snippeBaseUrl}/v1/payments`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -150,7 +169,7 @@ Deno.serve(async (req: Request) => {
         description: 'BookEase TZ appointment booking',
         customer: {
           name: customerName,
-          phone: customerPhone,
+          phone: formattedPhone, // Hapa inatumwa ile iliyosafishwa yenye 255
           email: customerEmail || undefined,
         },
         redirect_url: successUrl,
@@ -183,6 +202,9 @@ Deno.serve(async (req: Request) => {
       .from('bookings')
       .update({ payment_status: 'failed' })
       .eq('id', booking.id);
+
+    // Hii itakusaidia kuona ujumbe halisi wa makosa kwenye Supabase Logs Dashboard
+    console.error('Snippe API Error response payload:', JSON.stringify(snippeBody));
 
     return jsonResponse(
       {
