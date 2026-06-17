@@ -48,7 +48,6 @@ export default function CheckoutPage() {
       }
 
       try {
-        // Vuta taarifa za Biashara
         const { data: bizData, error: bizErr } = await supabase
           .from('businesses')
           .select('id, name, location')
@@ -58,7 +57,6 @@ export default function CheckoutPage() {
         if (bizErr) throw bizErr;
         setBusiness(bizData);
 
-        // Vuta taarifa za Huduma
         const { data: servData, error: servErr } = await supabase
           .from('services')
           .select('id, name, price, duration')
@@ -95,22 +93,20 @@ export default function CheckoutPage() {
     setSubmitting(true);
 
     try {
-      // SULUHISHO: Tuma muundo wote miwili (camelCase na snake_case) 
-      // Hii inahakikisha Edge Function ikisoma kwa muundo wowote ule haifeli na kusema "is required"
+      // Tuma payload safi na iliyonyooka yenye format zote mbili ili kuridhisha kila aina ya backend
       const checkoutPayload = {
-        // camelCase format
-        businessId,
-        serviceId,
+        businessId: businessId,
+        serviceId: serviceId,
         customerName: fullName.trim(),
         customerPhone: phone.trim(),
         customerEmail: email.trim() === '' ? null : email.trim(),
         bookingDate: dateParam,
         bookingTime: timeParam,
         notes: notes.trim() === '' ? null : notes.trim(),
-        paymentMethod,
+        paymentMethod: paymentMethod,
         amount: service.price,
 
-        // snake_case format (Kwa ajili ya Edge function inayotegemea muundo huu)
+        // Snake case backup
         business_id: businessId,
         service_id: serviceId,
         customer_name: fullName.trim(),
@@ -121,31 +117,21 @@ export default function CheckoutPage() {
         payment_method: paymentMethod
       };
 
-      // Tuma ombi kwenda kwenye Supabase Edge Function
+      // Tuma kwa Supabase Edge Function kwa njia safi kabisa
       const { data: sessionData, error: sessionError } = await supabase.functions.invoke('snippe-checkout', {
-        body: checkoutPayload,
+        body: checkoutPayload
       });
 
-      // Ukaguzi thabiti kama invocation imefeli yenyewe
       if (sessionError) {
-        let errorBody = 'Payment initialization failed.';
-        try {
-          const errResponse = await sessionError.context?.json();
-          errorBody = errResponse?.error || errResponse?.message || errorBody;
-        } catch {
-          errorBody = sessionError.message || errorBody;
-        }
-        throw new Error(errorBody);
+        throw new Error(sessionError.message || 'Edge Function integration failed.');
       }
 
-      // Kama kuna makosa yamerudishwa ndani ya object ya data
-      if (sessionData && (sessionData.error || sessionData.message === 'Snippe payment initialization failed')) {
-        throw new Error(sessionData.error || 'Snippe API refused to initialize payment. Check backend environment variables.');
+      if (sessionData && sessionData.error) {
+        throw new Error(sessionData.error);
       }
 
-      // Mambo yakiwa shwari kabisa
       if (sessionData) {
-        const transactionRef = sessionData.transactionReference || sessionData.transactionId || sessionData.transaction_id;
+        const transactionRef = sessionData.transactionReference || sessionData.transactionId || sessionData.transaction_id || 'N/A';
         const checkoutUrl = sessionData.checkoutUrl;
 
         if (checkoutUrl) {
@@ -157,11 +143,11 @@ export default function CheckoutPage() {
           );
         }
       } else {
-        throw new Error('No data returned from payment initialization.');
+        throw new Error('No configuration or data returned from payment gateway.');
       }
     } catch (err: any) {
-      console.error('Checkout response error:', err);
-      setErrorMessage(err.message || 'Snippe payment initialization failed.');
+      console.error('Checkout submit action error:', err);
+      setErrorMessage(err.message || 'Snippe gateway failed to respond.');
     } finally {
       setSubmitting(false);
     }
@@ -185,7 +171,7 @@ export default function CheckoutPage() {
       </button>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Booking Summary */}
+        {/* Booking Summary Section */}
         <div className="md:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
           <h2 className="text-xl font-bold text-gray-900 mb-6">Booking Summary</h2>
           
