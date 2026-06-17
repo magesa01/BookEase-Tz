@@ -15,7 +15,7 @@ serve(async (req) => {
     const body = await req.json();
     
     // Kusoma data kutoka fomu
-    const { businessId, serviceId, customerName, customerPhone, customerEmail, bookingDate, bookingTime, notes, paymentMethod, amount } = body;
+    const { businessId, serviceId, customerName, customerPhone, customerEmail, bookingDate, bookingTime, amount } = body;
 
     // Anzisha Supabase Admin Client ili kuingiza data kwenye database
     const supabaseAdmin = createClient(
@@ -38,9 +38,7 @@ serve(async (req) => {
           customer_email: customerEmail || null,
           booking_date: bookingDate,
           booking_time: bookingTime,
-          notes: notes || null,
           amount: Number(amount),
-          payment_method: paymentMethod,
           payment_status: 'mock_success', 
           transaction_reference: mockReference
         }
