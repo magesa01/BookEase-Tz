@@ -95,8 +95,10 @@ export default function CheckoutPage() {
     setSubmitting(true);
 
     try {
-      // 1. Jenga Object ya payload kwenda Backend Edge Function
+      // SULUHISHO: Tuma muundo wote miwili (camelCase na snake_case) 
+      // Hii inahakikisha Edge Function ikisoma kwa muundo wowote ule haifeli na kusema "is required"
       const checkoutPayload = {
+        // camelCase format
         businessId,
         serviceId,
         customerName: fullName.trim(),
@@ -107,18 +109,27 @@ export default function CheckoutPage() {
         notes: notes.trim() === '' ? null : notes.trim(),
         paymentMethod,
         amount: service.price,
+
+        // snake_case format (Kwa ajili ya Edge function inayotegemea muundo huu)
+        business_id: businessId,
+        service_id: serviceId,
+        customer_name: fullName.trim(),
+        customer_phone: phone.trim(),
+        customer_email: email.trim() === '' ? null : email.trim(),
+        booking_date: dateParam,
+        booking_time: timeParam,
+        payment_method: paymentMethod
       };
 
-      // 2. Tuma ombi kwenda kwenye Supabase Edge Function
+      // Tuma ombi kwenda kwenye Supabase Edge Function
       const { data: sessionData, error: sessionError } = await supabase.functions.invoke('snippe-checkout', {
         body: checkoutPayload,
       });
 
-      // Ukaguzi thabiti wa makosa yanayorudishwa na Invoke
+      // Ukaguzi thabiti kama invocation imefeli yenyewe
       if (sessionError) {
         let errorBody = 'Payment initialization failed.';
         try {
-          // Jaribu kusoma kama kuna ujumbe wa kina wa JSON kutoka kwenye Edge function response
           const errResponse = await sessionError.context?.json();
           errorBody = errResponse?.error || errResponse?.message || errorBody;
         } catch {
@@ -127,12 +138,12 @@ export default function CheckoutPage() {
         throw new Error(errorBody);
       }
 
-      // 3. Kama kuna makosa yamerudishwa ndani ya data object yenyewe
+      // Kama kuna makosa yamerudishwa ndani ya object ya data
       if (sessionData && (sessionData.error || sessionData.message === 'Snippe payment initialization failed')) {
-        throw new Error(sessionData.error || 'Snippe API refused to initialize payment. Check logs.');
+        throw new Error(sessionData.error || 'Snippe API refused to initialize payment. Check backend environment variables.');
       }
 
-      // 4. Mambo yakiwa safi, weka maelekezo ya kurasa
+      // Mambo yakiwa shwari kabisa
       if (sessionData) {
         const transactionRef = sessionData.transactionReference || sessionData.transactionId || sessionData.transaction_id;
         const checkoutUrl = sessionData.checkoutUrl;
@@ -174,7 +185,7 @@ export default function CheckoutPage() {
       </button>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Booking Summary Section */}
+        {/* Booking Summary */}
         <div className="md:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
           <h2 className="text-xl font-bold text-gray-900 mb-6">Booking Summary</h2>
           
@@ -227,7 +238,7 @@ export default function CheckoutPage() {
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. AUGUSTINE JOHN"
+                  placeholder="e.g. SILAS INNOCENT"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
@@ -239,7 +250,7 @@ export default function CheckoutPage() {
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. 255757737713"
+                  placeholder="e.g. 0757737713"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
