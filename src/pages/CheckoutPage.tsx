@@ -1,462 +1,302 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import {
-  MapPin,
-  Clock,
-  Calendar,
-  ArrowLeft,
-  Shield,
-  Loader2,
-  AlertCircle,
-  Smartphone,
-  CreditCard,
-  CheckCircle2,
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Navbar } from '../components/Navbar';
-import { Footer } from '../components/Footer';
-import { Business, Service, PaymentMethod, paymentMethods } from '../types';
-import { startSnippePayment } from '../hooks/useSnippePayment';
 
-export function CheckoutPage() {
+type PaymentMethod = 'mpesa' | 'airtel_money' | 'tigo_pesa' | 'halopesa' | 'card';
+
+interface BusinessDetails {
+  id: string;
+  name: string;
+  location: string;
+}
+
+interface ServiceDetails {
+  id: string;
+  name: string;
+  price: number;
+  duration: number;
+}
+
+export default function CheckoutPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  
+  const businessId = searchParams.get('businessId') || '';
+  const serviceId = searchParams.get('serviceId') || '';
+  const dateParam = searchParams.get('date') || '';
+  const timeParam = searchParams.get('time') || '';
 
-  const [business, setBusiness] = useState<Business | null>(null);
-  const [service, setService] = useState<Service | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [bookingNotes, setBookingNotes] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [business, setBusiness] = useState<BusinessDetails | null>(null);
+  const [service, setService] = useState<ServiceDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const date = searchParams.get('date');
-  const time = searchParams.get('time');
-  const serviceId = searchParams.get('serviceId');
-  const businessId = searchParams.get('businessId');
+  // Form States
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [notes, setNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        if (user.user_metadata?.full_name) {
-          setCustomerName(user.user_metadata.full_name);
-        }
-        if (user.email) {
-          setCustomerEmail(user.email);
-        }
+    async function fetchCheckoutDetails() {
+      if (!businessId || !serviceId) {
+        setErrorMessage('Invalid checkout session parameters.');
+        setLoading(false);
+        return;
       }
-    };
 
-    checkUser();
+      try {
+        // Vuta taarifa za Biashara
+        const { data: bizData, error: bizErr } = await supabase
+          .from('businesses')
+          .select('id, name, location')
+          .eq('id', businessId)
+          .single();
 
-    if (serviceId && businessId && date && time) {
-      fetchData();
-    } else {
-      setLoading(false);
+        if (bizErr) throw bizErr;
+        setBusiness(bizData);
+
+        // Vuta taarifa za Huduma
+        const { data: servData, error: servErr } = await supabase
+          .from('services')
+          .select('id, name, price, duration')
+          .eq('id', serviceId)
+          .single();
+
+        if (servErr) throw servErr;
+        setService(servData);
+      } catch (err: any) {
+        console.error('Error fetching checkout info:', err);
+        setErrorMessage(err.message || 'Failed to load checkout details.');
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [serviceId, businessId, date, time]);
 
-  const fetchData = async () => {
-    try {
-      const [businessRes, serviceRes] = await Promise.all([
-        supabase.from('businesses').select('*').eq('id', businessId).single(),
-        supabase.from('services').select('*').eq('id', serviceId).single(),
-      ]);
+    fetchCheckoutDetails();
+  }, [businessId, serviceId]);
 
-      if (businessRes.error) throw businessRes.error;
-      if (serviceRes.error) throw serviceRes.error;
+  const handleCheckoutSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
 
-      setBusiness(businessRes.data);
-      setService(serviceRes.data);
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to load booking details');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('tz-TZ', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-    }).format(price) + ' TSh';
-  };
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const handlePayment = async () => {
-    if (!selectedPayment || !customerName || !customerPhone || !business || !service || !date || !time) {
-      setError('Please fill in all required fields and select a payment method.');
+    if (!fullName.trim() || !phone.trim()) {
+      setErrorMessage('Full Name and Phone Number are required.');
       return;
     }
 
-    if (!currentUserId) {
-      setError('You must be logged in to complete a booking.');
+    if (!service) {
+      setErrorMessage('Service details not loaded correctly.');
       return;
     }
 
-    setProcessing(true);
-    setError(null);
-
-    // USALIMISHI WA NAMBA YA SIMU
-    const cleanedPhone = customerPhone.replace(/\+/g, '').replace(/\s+/g, '');
+    setSubmitting(false);
+    setSubmitting(true);
 
     try {
-      // FIX 1: Tunatumia type assertion 'as any' kulazimisha kupitisha userId kama hook yako ya backend inaitaka lakini haikutajwa kwenye interface ya TypeScript kule frontend.
-      const paymentParams: any = {
-        businessId: business.id,
-        serviceId: service.id,
-        userId: currentUserId, 
-        customerName,
-        customerPhone: cleanedPhone, 
-        customerEmail: customerEmail || null,
-        bookingDate: date,
-        bookingTime: time,
-        notes: bookingNotes || null,
-        paymentMethod: selectedPayment,
-        amount: Number(service.price),
+      // 1. Jenga Object ya payload kulingana kabisa na Interface ya Backend Edge Function
+      const checkoutPayload = {
+        businessId,
+        serviceId,
+        customerName: fullName,
+        customerPhone: phone,
+        customerEmail: email.trim() === '' ? null : email,
+        bookingDate: dateParam,
+        bookingTime: timeParam,
+        notes: notes.trim() === '' ? null : notes,
+        paymentMethod,
+        amount: service.price,
       };
 
-      const payment = await startSnippePayment(paymentParams);
+      // 2. Tuma ombi kwenda kwenye Supabase Edge Function yako ya Checkout
+      const { data: sessionData, error: sessionError } = await supabase.functions.invoke('snippe-checkout', {
+        body: checkoutPayload,
+      });
 
-      if (payment?.checkoutUrl) {
-        window.location.assign(payment.checkoutUrl);
-        return;
+      if (sessionError) {
+        throw new Error(sessionError.message || 'Edge Function execution failed.');
       }
 
-      // FIX 2: Tunasoma 'transactionReference' au tunailazimisha kama 'any' ili kuzuia kosa la mali isiyojulikana (unknown property)
-      const paymentStatus = (payment as any).status || '';
-      const txRef = (payment as any).transactionReference || '';
-      const receiptNum = (payment as any).receiptNumber || '';
+      // 3. Pokea majibu na dondoo ya muamala (Transaction Reference)
+      if (sessionData) {
+        const transactionRef = sessionData.transactionReference || sessionData.transactionId || sessionData.transaction_id;
+        const checkoutUrl = sessionData.checkoutUrl;
 
-      if (['successful', 'success', 'completed'].includes(paymentStatus.toLowerCase())) {
-        navigate(`/booking/success?receipt=${receiptNum}&business=${business.id}&service=${service.id}&date=${date}&time=${time}&transaction=${txRef}`);
-        return;
+        if (checkoutUrl) {
+          // Kama Snippe imetoa URL ya malipo ya nje au Card/Mobile redirect
+          window.location.href = checkoutUrl;
+        } else {
+          // Kama malipo yameanzishwa kiotomatiki (Push STK Prompt) au yamekamilika papo hapo
+          const receiptNum = sessionData.receiptNumber || '';
+          navigate(
+            `/booking/success?receipt=${receiptNum}&business=${businessId}&service=${serviceId}&date=${dateParam}&time=${timeParam}&transaction=${transactionRef}`
+          );
+        }
+      } else {
+        throw new Error('No data returned from payment initialization.');
       }
-
-      setError('Payment request sent. Please complete the prompt on your phone, then wait for confirmation.');
-    } catch (err) {
-      console.error('Payment error:', err);
-      setError(err instanceof Error ? err.message : 'Payment processing failed. Please try again.');
+    } catch (err: any) {
+      console.error('Checkout response error:', err);
+      setErrorMessage(err.message || 'Snippe payment initialization failed.');
     } finally {
-      setProcessing(false);
+      setSubmitting(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Navbar />
-        <main className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (!business || !service || !date || !time) {
-    return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Navbar />
-        <main className="flex-1 flex items-center justify-center px-4">
-          <div className="text-center">
-            <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Invalid Booking Details</h2>
-            <p className="text-gray-600 mb-6">We couldn't find your booking information.</p>
-            <Link
-              to="/search"
-              className="px-6 py-3 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors"
-            >
-              Browse Services
-            </Link>
-          </div>
-        </main>
-        <Footer />
+      <div className="flex justify-center items-center min-h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar />
+    <div className="max-w-6xl mx-auto px-4 py-8 bg-gray-50 min-h-screen">
+      <button 
+        onClick={() => navigate(-1)}
+        className="flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 mb-6"
+      >
+        ← Back to Business
+      </button>
 
-      <main className="flex-1 py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Link
-            to={`/business/${business.id}`}
-            className="inline-flex items-center gap-2 text-gray-600 hover:text-teal-600 mb-6 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to Business</span>
-          </Link>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Booking Summary Section */}
+        <div className="md:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
+          <h2 className="text-xl font-bold text-gray-900 mb-6">Booking Summary</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <span className="text-xs font-semibold text-gray-400 uppercase block">Business</span>
+              <span className="text-base font-bold text-gray-800">{business?.name || 'Loading...'}</span>
+              <span className="text-sm text-gray-500 block">📍 {business?.location || ''}</span>
+            </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="md:col-span-1">
-              <div className="bg-white rounded-2xl shadow-sm p-6 sticky top-24">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Booking Summary</h2>
+            <div className="border-t border-gray-100 pt-4">
+              <span className="text-xs font-semibold text-gray-400 uppercase block">Service</span>
+              <span className="text-base font-bold text-gray-800">{service?.name || 'Loading...'}</span>
+              <span className="text-sm text-gray-500 block">{service?.duration || 0} min</span>
+            </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Business</p>
-                    <p className="font-medium text-gray-900">{business.name}</p>
-                    <div className="flex items-center text-sm text-gray-500 mt-1">
-                      <MapPin className="h-3 w-3 mr-1" />
-                      {business.location}
-                    </div>
-                  </div>
+            <div className="border-t border-gray-100 pt-4">
+              <span className="text-xs font-semibold text-gray-400 uppercase block">Date & Time</span>
+              <span className="text-sm text-gray-700 block">📅 {dateParam}</span>
+              <span className="text-sm text-gray-700 block">🕒 {timeParam}</span>
+            </div>
 
-                  <div>
-                    <p className="text-sm text-gray-500">Service</p>
-                    <p className="font-medium text-gray-900">{service.name}</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {service.duration_minutes} min
-                    </p>
-                  </div>
+            <div className="border-t border-gray-100 pt-4 flex justify-between items-center bg-gray-50 -mx-6 -mb-6 p-6 rounded-b-2xl">
+              <span className="text-base font-medium text-gray-700">Total Price</span>
+              <span className="text-xl font-extrabold text-indigo-600">
+                {service ? `${service.price.toLocaleString()} TSh` : '0 TSh'}
+              </span>
+            </div>
+          </div>
+        </div>
 
-                  <div>
-                    <p className="text-sm text-gray-500">Date & Time</p>
-                    <div className="flex items-center text-sm text-gray-900 mt-1">
-                      <Calendar className="h-4 w-4 mr-1 text-teal-600" />
-                      {formatDate(date)}
-                    </div>
-                    <div className="flex items-center text-sm text-gray-900 mt-1">
-                      <Clock className="h-4 w-4 mr-1 text-teal-600" />
-                      {time}
-                    </div>
-                  </div>
+        {/* Secure Checkout Form */}
+        <div className="md:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+          <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            🛡️ Secure Checkout
+          </h2>
 
-                  <div className="border-t border-gray-200 pt-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Service Price</span>
-                      <span className="font-medium text-gray-900">
-                        {formatPrice(service.price)}
-                      </span>
-                    </div>
-                  </div>
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-xl text-sm font-medium">
+              ⚠️ {errorMessage}
+            </div>
+          )}
 
-                  <div className="bg-teal-50 rounded-xl p-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-teal-700">Total</span>
-                      <span className="text-xl font-bold text-teal-600">
-                        {formatPrice(service.price)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+          <form onSubmit={handleCheckoutSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. AUGUSTINE JOHN"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Number *</label>
+                <input
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. 255757737713"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
               </div>
             </div>
 
-            <div className="md:col-span-2">
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <Shield className="h-5 w-5 text-teal-600" />
-                  <h2 className="text-lg font-bold text-gray-900">Secure Checkout</h2>
-                </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address (Optional)</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
 
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-red-700">{error}</p>
-                  </div>
-                )}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Notes (Optional)</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any special requests or details..."
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
 
-                <div className="mb-8">
-                  <h3 className="font-semibold text-gray-900 mb-4">Your Details</h3>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Full Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Enter your full name"
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none"
-                        disabled={processing}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Phone Number <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="tel"
-                        value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
-                        placeholder="e.g. 0712345678"
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none"
-                        disabled={processing}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email Address (optional)
-                    </label>
-                    <input
-                      type="email"
-                      value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none"
-                      disabled={processing}
-                    />
-                  </div>
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Notes (optional)
-                    </label>
-                    <textarea
-                      value={bookingNotes}
-                      onChange={(e) => setBookingNotes(e.target.value)}
-                      placeholder="Any special requests..."
-                      rows={2}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none resize-none"
-                      disabled={processing}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-4">Select Payment Method</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {paymentMethods.map((method) => (
-                      <button
-                        key={method.id}
-                        type="button"
-                        onClick={() => setSelectedPayment(method.id)}
-                        disabled={processing}
-                        className={`relative p-4 rounded-xl border-2 text-left transition-all flex items-center gap-4 ${
-                          selectedPayment === method.id
-                            ? 'border-teal-500 bg-teal-50'
-                            : 'border-gray-200 hover:border-teal-300'
-                        }`}
-                      >
-                        <div
-                          className={`w-12 h-12 rounded-xl ${method.color} flex items-center justify-center text-white font-bold text-lg`}
-                        >
-                          {method.logo}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{method.name}</p>
-                          <p className="text-sm text-gray-500">
-                            {method.id === 'card' ? 'Visa / Mastercard' : 'Mobile Money'}
-                          </p>
-                        </div>
-                        {selectedPayment === method.id && (
-                          <CheckCircle2 className="absolute right-3 top-3 h-5 w-5 text-teal-600" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  {selectedPayment && selectedPayment !== 'card' && (
-                    <div className="mt-4 p-4 bg-blue-50 rounded-xl">
-                      <div className="flex items-start gap-3">
-                        <Smartphone className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-blue-900">
-                            {paymentMethods.find((m) => m.id === selectedPayment)?.name} Payment
-                          </p>
-                          <p className="text-sm text-blue-700 mt-1">
-                            After clicking "Pay Now", you will receive a secure payment prompt
-                            on your phone. Enter your PIN to confirm the transaction.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedPayment === 'card' && (
-                    <div className="mt-4 p-4 bg-purple-50 rounded-xl">
-                      <div className="flex items-start gap-3">
-                        <CreditCard className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-purple-900">Card Payment</p>
-                          <p className="text-sm text-purple-700 mt-1">
-                            Secure payment processed via Snippe. Your card details are
-                            encrypted and fully protected.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-8">
-                  <button
-                    type="button"
-                    onClick={handlePayment}
-                    disabled={!selectedPayment || !customerName || !customerPhone || processing}
-                    className="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            {/* Payment Method Selector */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-4">Select Payment Network</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {(['mpesa', 'airtel_money', 'tigo_pesa', 'halopesa', 'card'] as PaymentMethod[]).map((method) => (
+                  <label
+                    key={method}
+                    className={`flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer transition-all ${
+                      paymentMethod === method
+                        ? 'border-indigo-600 bg-indigo-50/40 text-indigo-700 ring-2 ring-indigo-600/20'
+                        : 'border-gray-200 hover:bg-gray-50 text-gray-600'
+                    }`}
                   >
-                    {processing ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Processing Payment...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="h-5 w-5" />
-                        Pay {formatPrice(service.price)}
-                      </>
-                    )}
-                  </button>
-                  <p className="text-center text-sm text-gray-500 mt-4">
-                    By proceeding, you agree to our Terms of Service and Privacy Policy
-                  </p>
-                </div>
-
-                <div className="mt-6 flex items-center justify-center gap-2 text-gray-400">
-                  <Shield className="h-4 w-4" />
-                  <span className="text-sm">Secured by Snippe</span>
-                </div>
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value={method}
+                      checked={paymentMethod === method}
+                      onChange={() => setPaymentMethod(method)}
+                      className="sr-only"
+                    />
+                    <span className="text-sm font-bold capitalize">{method.replace('_', ' ')}</span>
+                  </label>
+                ))}
               </div>
             </div>
-          </div>
-        </div>
-      </main>
 
-      {processing && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-teal-100 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Processing Your Payment</h3>
-            <p className="text-gray-600 text-sm">
-              Please wait while we securely process your transaction...
-            </p>
-            {selectedPayment && selectedPayment !== 'card' && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-700">
-                  Check your phone for the payment prompt from{' '}
-                  {paymentMethods.find((m) => m.id === selectedPayment)?.name}
-                </p>
-              </div>
-            )}
-          </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg transition-all ${
+                submitting 
+                  ? 'opacity-70 cursor-not-allowed' 
+                  : 'hover:bg-indigo-700 hover:shadow-xl active:scale-[0.99]'
+              }`}
+            >
+              {submitting ? 'Initializing Payment...' : `Confirm & Pay ${service ? service.price.toLocaleString() : 0} TSh`}
+            </button>
+          </form>
         </div>
-      )}
-
-      <Footer />
+      </div>
     </div>
   );
 }
