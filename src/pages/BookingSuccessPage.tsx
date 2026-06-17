@@ -94,7 +94,9 @@ export function BookingSuccessPage() {
           text: `My appointment at ${business?.name} is confirmed for ${date ? formatDate(date) : ''} at ${time}. Receipt: ${receipt}`,
         });
       } catch (err) {
-        console.log('Share cancelled');
+        if ((err as DOMException)?.name !== 'AbortError') {
+          console.error('Error sharing booking receipt:', err);
+        }
       }
     }
   };

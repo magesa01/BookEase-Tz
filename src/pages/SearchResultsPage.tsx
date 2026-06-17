@@ -92,7 +92,6 @@ export function SearchResultsPage() {
         };
       });
 
-      console.log("SUPABASE DATA MAPPED SUCCESSFULLY:", finalMappedData);
       setBusinesses(finalMappedData);
     } catch (error) {
       console.error('Error fetching businesses:', error);

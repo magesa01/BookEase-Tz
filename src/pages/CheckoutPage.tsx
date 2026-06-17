@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { Business, Service, PaymentMethod, paymentMethods } from '../types';
+import { startSnippePayment } from '../hooks/useSnippePayment';
 
 export function CheckoutPage() {
   const [searchParams] = useSearchParams();
@@ -91,39 +92,33 @@ export function CheckoutPage() {
     setError(null);
 
     try {
-      // Simulate Pesapal gateway processing delay
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const payment = await startSnippePayment({
+        businessId: business.id,
+        serviceId: service.id,
+        customerName,
+        customerPhone,
+        customerEmail: customerEmail || null,
+        bookingDate: date,
+        bookingTime: time,
+        notes: bookingNotes || null,
+        paymentMethod: selectedPayment,
+        amount: Number(service.price),
+      });
 
-      // Generate transaction ID
-      const transactionId = `PES-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      if (payment.checkoutUrl) {
+        window.location.assign(payment.checkoutUrl);
+        return;
+      }
 
-      // Create booking with payment info
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .insert({
-          business_id: business.id,
-          service_id: service.id,
-          customer_name: customerName,
-          customer_phone: customerPhone,
-          customer_email: customerEmail || null,
-          booking_date: date,
-          booking_time: time,
-          notes: bookingNotes || null,
-          status: 'confirmed',
-          payment_method: selectedPayment,
-          payment_status: 'completed',
-          transaction_id: transactionId,
-        })
-        .select()
-        .single();
+      if (['successful', 'success', 'completed'].includes(payment.status)) {
+        navigate(`/booking/success?receipt=${payment.receiptNumber}&business=${business.id}&service=${service.id}&date=${date}&time=${time}&transaction=${payment.transactionReference}`);
+        return;
+      }
 
-      if (bookingError) throw bookingError;
-
-      // Redirect to success page
-      navigate(`/booking/success?receipt=${booking.receipt_number}&business=${business.id}&service=${service.id}&date=${date}&time=${time}&transaction=${transactionId}`);
+      setError('Payment request sent. Please complete the prompt on your phone, then wait for confirmation.');
     } catch (err) {
       console.error('Payment error:', err);
-      setError('Payment processing failed. Please try again.');
+      setError(err instanceof Error ? err.message : 'Payment processing failed. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -371,7 +366,7 @@ export function CheckoutPage() {
                         <div>
                           <p className="font-medium text-purple-900">Card Payment</p>
                           <p className="text-sm text-purple-700 mt-1">
-                            Secure payment processed via Pesapal. Your card details are
+                            Secure payment processed via Snippe. Your card details are
                             encrypted and protected.
                           </p>
                         </div>
@@ -404,10 +399,10 @@ export function CheckoutPage() {
                   </p>
                 </div>
 
-                {/* Pesapal Badge */}
+                {/* Snippe Badge */}
                 <div className="mt-6 flex items-center justify-center gap-2 text-gray-400">
                   <Shield className="h-4 w-4" />
-                  <span className="text-sm">Secured by Pesapal</span>
+                  <span className="text-sm">Secured by Snippe</span>
                 </div>
               </div>
             </div>

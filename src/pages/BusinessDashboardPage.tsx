@@ -23,6 +23,7 @@ import {
 import { Business, Service, Booking } from '../types';
 
 type Tab = 'overview' | 'services' | 'settings';
+type FeedbackMessage = { type: 'success' | 'error'; text: string };
 
 export default function BusinessDashboardPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
@@ -52,6 +53,10 @@ export default function BusinessDashboardPage(): JSX.Element {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [bannerUploading, setBannerUploading] = useState(false);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const [bannerMessage, setBannerMessage] = useState<FeedbackMessage | null>(null);
+  const [profileMessage, setProfileMessage] = useState<FeedbackMessage | null>(null);
+  const [bookingMessage, setBookingMessage] = useState<FeedbackMessage | null>(null);
+  const [serviceMessage, setServiceMessage] = useState<FeedbackMessage | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -60,10 +65,11 @@ export default function BusinessDashboardPage(): JSX.Element {
 
   async function uploadBanner(file: File) {
     if (!file) return null;
+    setBannerMessage(null);
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData?.user) {
-        alert('You must be logged in to upload a banner image.');
+        setBannerMessage({ type: 'error', text: 'You must be logged in to upload a banner image.' });
         return null;
       }
     } catch (e) {
@@ -88,11 +94,12 @@ export default function BusinessDashboardPage(): JSX.Element {
           console.error('Failed to persist banner_url to DB', e);
         }
       }
+      setBannerMessage({ type: 'success', text: 'Banner image uploaded successfully.' });
       return publicUrl;
     } catch (err) {
       console.error('Upload failed', err);
       const message = (err as any)?.message || JSON.stringify(err);
-      alert(`Failed to upload banner image: ${message}`);
+      setBannerMessage({ type: 'error', text: `Failed to upload banner image: ${message}` });
       return null;
     } finally {
       setBannerUploading(false);
@@ -123,7 +130,7 @@ export default function BusinessDashboardPage(): JSX.Element {
       const { data: bk } = await supabase.from('bookings').select('*').eq('business_id', (biz as any).id).order('created_at', { ascending: false });
       setBookings((bk as Booking[]) || []);
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching business dashboard data:', e);
       setHasProfile(false);
     } finally {
       setLoading(false);
@@ -167,19 +174,22 @@ export default function BusinessDashboardPage(): JSX.Element {
 
   async function updateBusinessField(fieldsToUpdate: Record<string, any>) {
     if (!business) return;
+    setProfileMessage(null);
     try {
       const { error } = await supabase.from('businesses').update(fieldsToUpdate).eq('id', (business as any).id);
       if (error) throw error;
       setBusiness((b) => b ? ({ ...b, ...fieldsToUpdate } as Business) : b);
       setProfileForm((p) => ({ ...p, ...fieldsToUpdate }));
       setEditingProfile(false);
+      setProfileMessage({ type: 'success', text: 'Business details updated successfully.' });
     } catch (e) {
-      console.error(e);
-      alert('Failed to update business details.');
+      console.error('Failed to update business details:', e);
+      setProfileMessage({ type: 'error', text: 'Failed to update business details.' });
     }
   }
 
   async function handleUpdateBookingStatus(bookingId: string, newStatus: 'confirmed' | 'cancelled') {
+    setBookingMessage(null);
     setUpdatingStatusId(bookingId);
     try {
       const { error } = await supabase
@@ -190,22 +200,24 @@ export default function BusinessDashboardPage(): JSX.Element {
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
       );
+      setBookingMessage({ type: 'success', text: `Booking marked as ${newStatus}.` });
     } catch (e) {
-      console.error(e);
-      alert('Failed to update booking status.');
+      console.error('Failed to update booking status:', e);
+      setBookingMessage({ type: 'error', text: 'Failed to update booking status.' });
     } finally {
       setUpdatingStatusId(null);
     }
   }
 
   async function handleSaveService() {
+    setServiceMessage(null);
     if (!business) {
-      alert("Kosa: Hamna taarifa za biashara (Business Profile missing)!");
+      setServiceMessage({ type: 'error', text: 'Kosa: Hamna taarifa za biashara (Business Profile missing)!' });
       return;
     }
     
     if (!serviceForm.name || !serviceForm.price) {
-      alert("Tafadhali jaza Jina la Huduma na Bei kabla ya kusave!");
+      setServiceMessage({ type: 'error', text: 'Tafadhali jaza Jina la Huduma na Bei kabla ya kusave!' });
       return;
     }
     
@@ -213,10 +225,8 @@ export default function BusinessDashboardPage(): JSX.Element {
     try {
       // Tunachukua id kwa uhakika (iwe kama string au namba kulingana na DB yako)
       const currentBusinessId = (business as any).id;
-      
-      console.log("Inajaribu kusave huduma kwa business_id:", currentBusinessId);
 
-      const { data, error } = await supabase.from('services').insert({
+      const { error } = await supabase.from('services').insert({
         business_id: currentBusinessId,
         name: serviceForm.name,
         description: serviceForm.description || null,
@@ -229,21 +239,38 @@ export default function BusinessDashboardPage(): JSX.Element {
         throw error;
       }
 
-      console.log("Imefanikiwa kusave huduma:", data);
       setShowServiceModal(false);
       setServiceForm({ name: '', description: '', price: '', duration_minutes: '30' });
       await fetchDashboardData();
-      alert("Huduma imehifadhiwa kikamilifu!");
+      setServiceMessage({ type: 'success', text: 'Huduma imehifadhiwa kikamilifu!' });
     } catch (e: any) {
       console.error("Kosa la Supabase:", e);
       // Hii itakwambia nini hasa kimefeli badala ya kutulia tu!
-      alert(`Imeshindwa kusave! Sababu: ${e.message || JSON.stringify(e)}`);
+      setServiceMessage({ type: 'error', text: `Imeshindwa kusave! Sababu: ${e.message || JSON.stringify(e)}` });
     } finally {
       setSavingService(false);
     }
   }
 
   const formatPrice = (p = 0) => new Intl.NumberFormat('tz-TZ').format(p) + ' TSh';
+
+  const renderFeedbackMessage = (message: FeedbackMessage | null) => {
+    if (!message) return null;
+    return (
+      <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm font-medium ${
+        message.type === 'success'
+          ? 'border-green-200 bg-green-50 text-green-700'
+          : 'border-red-200 bg-red-50 text-red-700'
+      }`}>
+        {message.type === 'success' ? (
+          <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        ) : (
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        )}
+        <span>{message.text}</span>
+      </div>
+    );
+  };
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -417,6 +444,9 @@ export default function BusinessDashboardPage(): JSX.Element {
                       )}
                     </div>
                   </div>
+                  <div className="mt-3">
+                    {renderFeedbackMessage(bannerMessage)}
+                  </div>
                 </div>
               </div>
             )}
@@ -548,6 +578,8 @@ export default function BusinessDashboardPage(): JSX.Element {
             </div>
             
             <div className="p-6">
+              {renderFeedbackMessage(serviceMessage)}
+
               {/* TAB 1: OVERVIEW */}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
@@ -557,6 +589,7 @@ export default function BusinessDashboardPage(): JSX.Element {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-gray-900 mb-4">Incoming Customer Requests</h3>
+                    {renderFeedbackMessage(bookingMessage)}
                     {bookings.length === 0 ? (
                       <div className="text-center py-12 border border-dashed rounded-2xl bg-gray-50/50">
                         <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -670,6 +703,7 @@ export default function BusinessDashboardPage(): JSX.Element {
                   </div>
 
                   <div className="space-y-4">
+                    {renderFeedbackMessage(profileMessage)}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Business Name</label>
@@ -794,6 +828,9 @@ export default function BusinessDashboardPage(): JSX.Element {
                           )}
                         </div>
                       </div>
+                      <div className="mt-3">
+                        {renderFeedbackMessage(bannerMessage)}
+                      </div>
                     </div>
 
                     {editingProfile && (
@@ -837,6 +874,7 @@ export default function BusinessDashboardPage(): JSX.Element {
             </div>
             {/* Body Form */}
             <div className="p-6 space-y-4">
+              {renderFeedbackMessage(serviceMessage)}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Service Name *</label>
                 <input

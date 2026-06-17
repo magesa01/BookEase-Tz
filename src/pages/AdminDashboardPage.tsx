@@ -29,10 +29,12 @@ export function AdminDashboardPage() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(false);
   const [servicesErrorMsg, setServicesErrorMsg] = useState<string | null>(null); 
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchAllBusinessesAndServices = async () => {
     setLoading(true);
     setServicesErrorMsg(null); 
+    setStatusMessage(null);
     try {
       // 1. Fetch all businesses
       const { data: businessesData, error: businessesError } = await supabase
@@ -66,8 +68,8 @@ export function AdminDashboardPage() {
 
       setBusinesses(finalMappedBusinesses);
     } catch (err: any) {
-      console.error('General Admin Dashboard Error:', err.message);
-      alert('System Error: ' + err.message);
+      console.error('General Admin Dashboard Error:', err);
+      setStatusMessage({ type: 'error', text: `System Error: ${err.message}` });
     } finally {
       setLoading(false);
     }
@@ -75,6 +77,7 @@ export function AdminDashboardPage() {
 
   // Update business status to approved or failed
   const handleUpdateStatus = async (id: string, newStatus: 'approved' | 'failed') => {
+    setStatusMessage(null);
     try {
       const { error } = await supabase
         .from('businesses')
@@ -87,8 +90,10 @@ export function AdminDashboardPage() {
       setBusinesses(prev =>
         prev.map(b => (b.id === id ? { ...b, approval_status: newStatus } : b))
       );
+      setStatusMessage({ type: 'success', text: `Business status updated to ${newStatus}.` });
     } catch (err: any) {
-      alert('Failed to update business status: ' + err.message);
+      console.error('Failed to update business status:', err);
+      setStatusMessage({ type: 'error', text: `Failed to update business status: ${err.message}` });
     }
   };
 
@@ -177,6 +182,21 @@ export function AdminDashboardPage() {
                 <h4 className="font-bold text-sm">Error Fetching Services</h4>
                 <p className="text-xs mt-1 bg-white/50 p-2 rounded border border-red-100 font-mono">{servicesErrorMsg}</p>
               </div>
+            </div>
+          )}
+
+          {statusMessage && (
+            <div className={`p-4 rounded-xl flex items-start gap-3 shadow-sm border ${
+              statusMessage.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              {statusMessage.type === 'success' ? (
+                <CheckCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+              )}
+              <p className="text-sm font-medium">{statusMessage.text}</p>
             </div>
           )}
 
