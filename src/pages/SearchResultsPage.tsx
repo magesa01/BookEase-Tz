@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { MapPin, Star, Clock, Search, Filter, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { Business, Category, categoryLabels } from '../types';
+import { Business, Category } from '../types';
 
 interface BusinessWithServices extends Business {
-  services?: Array<{ id: string; name: string; business_id: string; [key: string]: any }>;
+  services?: any[];
 }
 
 export function SearchResultsPage() {
@@ -15,12 +14,6 @@ export function SearchResultsPage() {
   const navigate = useNavigate();
   const [businesses, setBusinesses] = useState<BusinessWithServices[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
-  const [categoryFilter, setCategoryFilter] = useState<Category | ''>((searchParams.get('category') as Category) || '');
-  const [locationFilter, setLocationFilter] = useState(searchParams.get('location') || '');
-  const [sortBy, setSortBy] = useState<'rating' | 'name'>('rating');
-  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     fetchBusinesses();
@@ -33,38 +26,32 @@ export function SearchResultsPage() {
       const location = searchParams.get('location');
       const q = searchParams.get('q');
 
-      // 1. Vuta services zote kwanza
-      const { data: allServices, error: servicesError } = await supabase.from('services').select('*');
-      if (servicesError) throw servicesError;
-
-      // 2. Query ya biashara
-      let query = supabase.from('businesses').select('*').eq('approval_status', 'approved');
+      // 1. Query ya msingi - tumia select('*', services(*)) ili kupata data kwa ufanisi zaidi
+      let query = supabase
+        .from('businesses')
+        .select(`*, services(*)`)
+        .eq('approval_status', 'approved');
 
       if (category) query = query.eq('category', category);
       if (location) query = query.ilike('location', `%${location}%`);
 
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // 2. Client-side filtering kwa ajili ya search query (q) 
+      // Hii ni njia salama zaidi kuliko kujenga string ndefu ya SQL query
+      let filteredData = data || [];
+      
       if (q) {
-        // Tafuta kwa jina, maelezo, au kupitia huduma
-        const matchingServiceIds = allServices?.filter(s => s.name?.toLowerCase().includes(q.toLowerCase())).map(s => s.business_id) || [];
-        const ids = [...new Set(matchingServiceIds)]; // unique IDs
-        
-        if (ids.length > 0) {
-          query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%,id.in.(${ids.join(',')})`);
-        } else {
-          query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%`);
-        }
+        const lowerQ = q.toLowerCase();
+        filteredData = filteredData.filter(biz => 
+          biz.name?.toLowerCase().includes(lowerQ) ||
+          biz.description?.toLowerCase().includes(lowerQ) ||
+          biz.services?.some((s: any) => s.name?.toLowerCase().includes(lowerQ))
+        );
       }
 
-      const { data: businessesData, error: businessError } = await query;
-      if (businessError) throw businessError;
-
-      // 3. Mapping
-      const finalMappedData = (businessesData || []).map((biz) => ({
-        ...biz,
-        services: allServices?.filter(s => s.business_id === biz.id) || []
-      }));
-
-      setBusinesses(finalMappedData);
+      setBusinesses(filteredData);
     } catch (error) {
       console.error('Error fetching businesses:', error);
     } finally {
@@ -72,27 +59,31 @@ export function SearchResultsPage() {
     }
   };
 
-  const handleSearch = () => {
-    const params = new URLSearchParams();
-    if (searchQuery) params.set('q', searchQuery);
-    if (categoryFilter) params.set('category', categoryFilter);
-    if (locationFilter) params.set('location', locationFilter);
-    navigate(`/search?${params.toString()}`);
-  };
-
-  const sortedBusinesses = useMemo(() => {
-    return [...businesses].sort((a, b) => {
-      if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
-      return a.name.localeCompare(b.name);
-    });
-  }, [businesses, sortBy]);
+  if (loading) return <div className="p-10 text-center">Inapakia...</div>;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
-      <main className="flex-1">
-        {/* Search UI hapa ... (kama ulivyokuwa nayo) */}
-        {/* Results Grid hapa ... (kama ulivyokuwa nayo) */}
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-6">Matokeo ya Utafutaji</h1>
+        
+        {businesses.length === 0 ? (
+          <p>Hakuna biashara iliyopatikana kwa vigezo hivi.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {businesses.map((biz) => (
+              <div key={biz.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-xl font-bold">{biz.name}</h2>
+                <p className="text-gray-600 text-sm mt-2">{biz.description}</p>
+                <div className="mt-4">
+                  <span className="text-xs font-semibold bg-teal-100 text-teal-800 px-2 py-1 rounded">
+                    {biz.category}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </main>
       <Footer />
     </div>
