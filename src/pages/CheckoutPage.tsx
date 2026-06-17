@@ -92,43 +92,54 @@ export default function CheckoutPage() {
       return;
     }
 
-    setSubmitting(false);
     setSubmitting(true);
 
     try {
-      // 1. Jenga Object ya payload kulingana kabisa na Interface ya Backend Edge Function
+      // 1. Jenga Object ya payload kwenda Backend Edge Function
       const checkoutPayload = {
         businessId,
         serviceId,
-        customerName: fullName,
-        customerPhone: phone,
-        customerEmail: email.trim() === '' ? null : email,
+        customerName: fullName.trim(),
+        customerPhone: phone.trim(),
+        customerEmail: email.trim() === '' ? null : email.trim(),
         bookingDate: dateParam,
         bookingTime: timeParam,
-        notes: notes.trim() === '' ? null : notes,
+        notes: notes.trim() === '' ? null : notes.trim(),
         paymentMethod,
         amount: service.price,
       };
 
-      // 2. Tuma ombi kwenda kwenye Supabase Edge Function yako ya Checkout
+      // 2. Tuma ombi kwenda kwenye Supabase Edge Function
       const { data: sessionData, error: sessionError } = await supabase.functions.invoke('snippe-checkout', {
         body: checkoutPayload,
       });
 
+      // Ukaguzi thabiti wa makosa yanayorudishwa na Invoke
       if (sessionError) {
-        throw new Error(sessionError.message || 'Edge Function execution failed.');
+        let errorBody = 'Payment initialization failed.';
+        try {
+          // Jaribu kusoma kama kuna ujumbe wa kina wa JSON kutoka kwenye Edge function response
+          const errResponse = await sessionError.context?.json();
+          errorBody = errResponse?.error || errResponse?.message || errorBody;
+        } catch {
+          errorBody = sessionError.message || errorBody;
+        }
+        throw new Error(errorBody);
       }
 
-      // 3. Pokea majibu na dondoo ya muamala (Transaction Reference)
+      // 3. Kama kuna makosa yamerudishwa ndani ya data object yenyewe
+      if (sessionData && (sessionData.error || sessionData.message === 'Snippe payment initialization failed')) {
+        throw new Error(sessionData.error || 'Snippe API refused to initialize payment. Check logs.');
+      }
+
+      // 4. Mambo yakiwa safi, weka maelekezo ya kurasa
       if (sessionData) {
         const transactionRef = sessionData.transactionReference || sessionData.transactionId || sessionData.transaction_id;
         const checkoutUrl = sessionData.checkoutUrl;
 
         if (checkoutUrl) {
-          // Kama Snippe imetoa URL ya malipo ya nje au Card/Mobile redirect
           window.location.href = checkoutUrl;
         } else {
-          // Kama malipo yameanzishwa kiotomatiki (Push STK Prompt) au yamekamilika papo hapo
           const receiptNum = sessionData.receiptNumber || '';
           navigate(
             `/booking/success?receipt=${receiptNum}&business=${businessId}&service=${serviceId}&date=${dateParam}&time=${timeParam}&transaction=${transactionRef}`
