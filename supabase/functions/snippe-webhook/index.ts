@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 function extractReference(payload: Record<string, unknown>) {
   const data = (payload.data || payload.payment || payload.transaction || payload) as Record<string, unknown>;
