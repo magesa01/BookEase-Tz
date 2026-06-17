@@ -1,18 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { MapPin, Star, Clock } from 'lucide-react';
+import { Star, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { Business } from '../types';
 
-interface BusinessWithServices extends Business {
-  services?: any[];
-}
-
 export function SearchResultsPage() {
   const [searchParams] = useSearchParams();
-  const [businesses, setBusinesses] = useState<BusinessWithServices[]>([]);
+  const [businesses, setBusinesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,87 +18,62 @@ export function SearchResultsPage() {
   const fetchBusinesses = async () => {
     setLoading(true);
     try {
-      const category = searchParams.get('category');
-      const location = searchParams.get('location');
-      const q = searchParams.get('q');
-
-      let query = supabase
+      const { data, error } = await supabase
         .from('businesses')
         .select(`*, services(*)`)
         .eq('approval_status', 'approved');
-
-      if (category) query = query.eq('category', category);
-      if (location) query = query.ilike('location', `%${location}%`);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      let filteredData = data || [];
       
-      if (q) {
-        const lowerQ = q.toLowerCase();
-        filteredData = filteredData.filter(biz => 
-          biz.name?.toLowerCase().includes(lowerQ) ||
-          biz.description?.toLowerCase().includes(lowerQ) ||
-          biz.services?.some((s: any) => s.name?.toLowerCase().includes(lowerQ))
-        );
-      }
-
-      setBusinesses(filteredData);
-    } catch (error) {
-      console.error('Error fetching businesses:', error);
+      if (error) throw error;
+      setBusinesses(data || []);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar />
-      <main className="flex-1 container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8">Matokeo ya Utafutaji</h1>
+      <main className="flex-1 container mx-auto px-4 py-12">
+        <h1 className="text-3xl font-bold mb-8">Browse Services</h1>
         
-        {loading ? (
-          <div className="text-center py-20 text-gray-500">Inatafuta huduma zinazokufaa...</div>
-        ) : businesses.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl shadow-sm">
-            <p className="text-gray-600">Samahani, hatujapata biashara kwa vigezo hivi.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {loading ? <p>Inapakia...</p> : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {businesses.map((biz) => (
-              <div key={biz.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-300">
-                <div className="flex justify-between items-start mb-4">
-                  <h2 className="text-xl font-bold text-gray-900">{biz.name}</h2>
-                  <span className="flex items-center text-amber-500 font-semibold">
-                    <Star className="w-4 h-4 fill-current mr-1" />
-                    {biz.rating || 'N/A'}
-                  </span>
-                </div>
-                
-                <p className="text-gray-600 text-sm mb-4 line-clamp-2">{biz.description}</p>
-                
-                <div className="flex items-center text-gray-500 text-xs mb-4 gap-4">
-                  <span className="flex items-center"><MapPin className="w-3 h-3 mr-1" /> {biz.location}</span>
+              <div key={biz.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+                {/* Header ya kadi (Kama kwenye picha) */}
+                <div className="h-40 bg-teal-500 relative flex items-center justify-center">
+                   <span className="absolute top-4 right-4 bg-white/90 px-2 py-1 rounded text-sm font-bold text-gray-700">$$</span>
                 </div>
 
-                <div className="mt-4 border-t pt-4">
-                  <h4 className="font-semibold text-sm mb-3">Huduma Zinazopatikana:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {biz.services?.length ? (
-                      biz.services.map((service: any) => (
-                        <Link 
-                          key={service.id} 
-                          to={`/checkout?serviceId=${service.id}&businessId=${biz.id}`}
-                          className="px-3 py-1 bg-teal-50 text-teal-700 text-xs font-medium rounded-full border border-teal-200 hover:bg-teal-600 hover:text-white transition-all"
-                        >
-                          {service.name}
-                        </Link>
-                      ))
-                    ) : (
-                      <span className="text-xs text-gray-400 italic">Hakuna huduma zilizoorodheshwa</span>
-                    )}
+                <div className="p-6 flex-1">
+                  <div className="flex justify-between items-start mb-2">
+                    <h2 className="text-xl font-bold text-gray-900">{biz.name}</h2>
+                    <div className="flex items-center text-amber-500 font-bold">
+                      <Star className="w-4 h-4 fill-current mr-1" /> {biz.rating || 4.5}
+                    </div>
                   </div>
+                  
+                  <div className="flex items-center text-gray-500 text-sm mb-4">
+                    <MapPin className="w-4 h-4 mr-1" /> {biz.location}
+                  </div>
+
+                  <p className="text-sm font-semibold text-gray-700 mb-2">AVAILABLE SERVICES:</p>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {biz.services?.map((s: any) => (
+                      <span key={s.id} className="bg-teal-50 text-teal-700 px-3 py-1 rounded-full text-xs font-medium">
+                        {s.name}
+                      </span>
+                    ))}
+                  </div>
+
+                  <Link 
+                    to={`/checkout?businessId=${biz.id}`} 
+                    className="text-teal-600 font-semibold flex items-center hover:text-teal-800 transition-colors"
+                  >
+                    Book Appointment →
+                  </Link>
                 </div>
               </div>
             ))}
