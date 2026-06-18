@@ -1,15 +1,15 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, Menu, X, User, LayoutDashboard, ChevronDown } from 'lucide-react';
+import { Calendar, Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const location = useLocation();
 
   const isActive = (path: string) => location.pathname === path;
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,9 +25,7 @@ export function Navbar() {
 
     return () => {
       mounted = false;
-      // unsubscribe if present
-      // @ts-ignore - runtime has subscription
-      data?.subscription?.unsubscribe?.();
+      data.subscription.unsubscribe();
     };
   }, []);
 
@@ -72,39 +70,6 @@ export function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
-            {/* Dashboard Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                onBlur={() => setTimeout(() => setIsDropdownOpen(false), 150)}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                <span>Dashboard</span>
-                <ChevronDown className={`h-3 w-3 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {isDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                  <Link
-                    to="/dashboard/customer"
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors"
-                    onClick={() => setIsDropdownOpen(false)}
-                  >
-                    <User className="h-4 w-4" />
-                    Customer Portal
-                  </Link>
-                  <Link
-                    to="/dashboard/business"
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors"
-                    onClick={() => setIsDropdownOpen(false)}
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    Business Portal
-                  </Link>
-                  <hr className="my-1 border-gray-100" />
-                </div>
-              )}
-            </div>
             {user ? (
               <div className="flex items-center space-x-3">
                 <span className="text-sm text-gray-700">{user.email}</span>
@@ -169,24 +134,6 @@ export function Navbar() {
               >
                 Categories
               </a>
-              <hr className="border-gray-100" />
-              <Link
-                to="/dashboard/customer"
-                className="flex items-center gap-2 text-sm font-medium text-gray-600"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <User className="h-4 w-4" />
-                Customer Dashboard
-              </Link>
-              <Link
-                to="/dashboard/business"
-                className="flex items-center gap-2 text-sm font-medium text-gray-600"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                Business Dashboard
-              </Link>
-              {/* Admin Portal link removed for public header */}
               <hr className="border-gray-100" />
               {user ? (
                 <>

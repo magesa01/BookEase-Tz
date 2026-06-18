@@ -3,6 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { ImageCarousel } from '../components/ImageCarousel';
+
+const authCarouselImages = [
+  '/images/saloon.jpg',
+  '/images/clinics.jpg',
+  '/images/barbashop.jpg',
+  '/images/car%20wash.jpg',
+];
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -73,52 +81,59 @@ export default function Login() {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      <main className="flex-1 flex items-center justify-center py-12 px-4">
-        <div className="w-full max-w-lg">
-          <div className="bg-white rounded-2xl shadow p-8">
-            <h2 className="text-2xl font-semibold mb-2">Sign in to your account</h2>
-            <p className="text-sm text-gray-500 mb-6">Sign in as a Customer, Business Owner or Admin</p>
+      <main className="flex-1 px-4 py-12">
+        <div className="mx-auto grid w-full max-w-6xl items-stretch gap-8 lg:grid-cols-2">
+          <div className="hidden min-h-[560px] lg:block">
+            <ImageCarousel images={authCarouselImages} className="h-full shadow-xl" />
+          </div>
+          <div className="flex items-center justify-center">
+            <div className="w-full max-w-lg">
+              <div className="bg-white rounded-2xl shadow p-8">
+                <h2 className="text-2xl font-semibold mb-2">Sign in to your account</h2>
+                <p className="text-sm text-gray-500 mb-6">Sign in as a Customer, Business Owner or Admin</p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1 block w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-teal-200 outline-none"
-                  placeholder="you@example.com"
-                  required
-                />
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1 block w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-teal-200 outline-none"
+                      placeholder="you@example.com"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="mt-1 block w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-teal-200 outline-none"
+                      placeholder="Your password"
+                      required
+                    />
+                  </div>
+
+                  {error && <div className="text-sm text-red-600">{error}</div>}
+
+                  <div>
+                    <button
+                      type="submit"
+                      className="w-full px-4 py-3 bg-teal-600 text-white rounded-xl font-medium disabled:opacity-60"
+                      disabled={loading}
+                    >
+                      {loading ? 'Signing in...' : 'Sign in'}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="mt-6 text-center">
+                  <p className="text-sm text-gray-600">Don't have an account? <Link to="/register" className="text-teal-600 font-medium">Register</Link></p>
+                </div>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 block w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-teal-200 outline-none"
-                  placeholder="Your password"
-                  required
-                />
-              </div>
-
-              {error && <div className="text-sm text-red-600">{error}</div>}
-
-              <div>
-                <button
-                  type="submit"
-                  className="w-full px-4 py-3 bg-teal-600 text-white rounded-xl font-medium disabled:opacity-60"
-                  disabled={loading}
-                >
-                  {loading ? 'Signing in...' : 'Sign in'}
-                </button>
-              </div>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">Don't have an account? <Link to="/register" className="text-teal-600 font-medium">Register</Link></p>
             </div>
           </div>
         </div>

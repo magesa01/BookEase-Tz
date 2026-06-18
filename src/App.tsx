@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { HomePage } from './pages/HomePage';
 import { SearchResultsPage } from './pages/SearchResultsPage';
 import CheckoutPage from './pages/CheckoutPage';
@@ -13,6 +14,19 @@ import Register from './pages/Register';
 function App() {
   return (
     <Router>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          className: 'rounded-2xl shadow-sm',
+          success: {
+            iconTheme: {
+              primary: '#0d9488',
+              secondary: '#ffffff',
+            },
+          },
+        }}
+      />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/search" element={<SearchResultsPage />} />

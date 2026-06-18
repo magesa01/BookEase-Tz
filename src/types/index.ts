@@ -1,6 +1,6 @@
 export type Category = 'salon' | 'barbershop' | 'clinic' | 'beauty_center' | 'car_wash';
 
-export type PaymentMethod = 'mpesa' | 'airtel_money' | 'tigo_pesa' | 'halopesa' | 'card';
+export type PaymentMethod = 'mpesa' | 'airtel_money' | 'tigo_pesa' | 'halopesa' | 'card' | 'paypal';
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
@@ -94,6 +94,7 @@ export const paymentMethods: { id: PaymentMethod; name: string; logo: string; co
   { id: 'tigo_pesa', name: 'Tigo Pesa (Mixx by Yas)', logo: 'T', color: 'bg-blue-600' },
   { id: 'halopesa', name: 'HaloPesa', logo: 'H', color: 'bg-purple-600' },
   { id: 'card', name: 'Card Payment', logo: 'C', color: 'bg-gray-700' },
+  { id: 'paypal', name: 'PayPal', logo: 'P', color: 'bg-blue-600' },
 ];
 
 export const locations = [
