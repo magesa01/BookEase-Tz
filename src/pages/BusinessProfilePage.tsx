@@ -306,6 +306,7 @@ export function BusinessProfilePage() {
                         <button
                           key={service.id}
                           onClick={() => handleServiceSelect(service)}
+
                           className={`w-full p-4 rounded-xl border-2 text-left transition-all hover:border-teal-500 ${
                             selectedService?.id === service.id
                               ? 'border-teal-500 bg-teal-50'
@@ -314,8 +315,23 @@ export function BusinessProfilePage() {
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                              <div className="flex items-start gap-3">
+                                <img
+                                  src={service.image_url || '/image_cace1738.png'}
+                                  alt={service.name}
+                                  className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    const img = e.currentTarget;
+                                    img.src = '/image_cace1738.png';
+                                  }}
+                                />
+                                <div>
+                                  <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                                </div>
+                              </div>
                               {service.description && (
+
                                 <p className="text-sm text-gray-600 mt-1">
                                   {service.description}
                                 </p>

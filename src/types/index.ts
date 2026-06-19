@@ -51,10 +51,13 @@ export interface Service {
   business_id: string;
   name: string;
   description: string | null;
+  /** Public URL for a service image stored in Supabase Storage */
+  image_url: string | null;
   price: number;
   duration_minutes: number;
   created_at: string;
 }
+
 
 export interface Booking {
   id: string;

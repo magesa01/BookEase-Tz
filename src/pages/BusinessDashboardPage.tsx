@@ -49,6 +49,10 @@ export default function BusinessDashboardPage(): JSX.Element {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [serviceForm, setServiceForm] = useState({ name: '', description: '', price: '', duration_minutes: '30' });
+  const [serviceImageFile, setServiceImageFile] = useState<File | null>(null);
+  const [serviceImagePreview, setServiceImagePreview] = useState<string | null>(null);
+  const [serviceImageUploading, setServiceImageUploading] = useState(false);
+
   const [savingService, setSavingService] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [bannerUploading, setBannerUploading] = useState(false);
@@ -209,48 +213,89 @@ export default function BusinessDashboardPage(): JSX.Element {
     }
   }
 
+  const SERVICE_IMAGE_BUCKET = 'service-images';
+  const SERVICE_IMAGE_PLACEHOLDER_URL = '/image_cace1738.png';
+
+  async function uploadServiceImage(file: File): Promise<string | null> {
+    if (!file) return null;
+
+    setServiceImageUploading(true);
+    try {
+      const filePath = `services/${Date.now()}_${file.name}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from(SERVICE_IMAGE_BUCKET)
+        .upload(filePath, file, {
+          upsert: true,
+          contentType: file.type,
+        });
+
+      if (uploadErr) throw uploadErr;
+
+      const { data: publicData } = supabase.storage
+        .from(SERVICE_IMAGE_BUCKET)
+        .getPublicUrl(filePath);
+
+      return publicData.publicUrl;
+    } catch (err) {
+      console.error('Service image upload failed:', err);
+      return null;
+    } finally {
+      setServiceImageUploading(false);
+    }
+  }
+
   async function handleSaveService() {
     setServiceMessage(null);
+
     if (!business) {
       setServiceMessage({ type: 'error', text: 'Kosa: Hamna taarifa za biashara (Business Profile missing)!' });
       return;
     }
-    
+
     if (!serviceForm.name || !serviceForm.price) {
       setServiceMessage({ type: 'error', text: 'Tafadhali jaza Jina la Huduma na Bei kabla ya kusave!' });
       return;
     }
-    
+
     setSavingService(true);
     try {
-      // Tunachukua id kwa uhakika (iwe kama string au namba kulingana na DB yako)
       const currentBusinessId = (business as any).id;
 
-      const { error } = await supabase.from('services').insert({
-        business_id: currentBusinessId,
-        name: serviceForm.name,
-        description: serviceForm.description || null,
-        price: parseFloat(serviceForm.price),
-        duration_minutes: parseInt(serviceForm.duration_minutes, 10)
-      }).select();
-
-      if (error) {
-        // Kama Supabase ikikataa, itatupa sababu hapa!
-        throw error;
+      let imageUrl: string | null = null;
+      if (serviceImageFile) {
+        imageUrl = await uploadServiceImage(serviceImageFile);
       }
+
+      const { error } = await supabase
+        .from('services')
+        .insert({
+          business_id: currentBusinessId,
+          name: serviceForm.name,
+          description: serviceForm.description || null,
+          price: parseFloat(serviceForm.price),
+          duration_minutes: parseInt(serviceForm.duration_minutes, 10),
+          image_url: imageUrl,
+        })
+        .select();
+
+      if (error) throw error;
 
       setShowServiceModal(false);
       setServiceForm({ name: '', description: '', price: '', duration_minutes: '30' });
+      setServiceImageFile(null);
+      setServiceImagePreview(null);
+
       await fetchDashboardData();
       setServiceMessage({ type: 'success', text: 'Huduma imehifadhiwa kikamilifu!' });
     } catch (e: any) {
-      console.error("Kosa la Supabase:", e);
-      // Hii itakwambia nini hasa kimefeli badala ya kutulia tu!
+      console.error('Kosa la Supabase:', e);
       setServiceMessage({ type: 'error', text: `Imeshindwa kusave! Sababu: ${e.message || JSON.stringify(e)}` });
     } finally {
       setSavingService(false);
     }
   }
+
 
   const formatPrice = (p = 0) => new Intl.NumberFormat('tz-TZ').format(p) + ' TSh';
 
@@ -917,8 +962,40 @@ export default function BusinessDashboardPage(): JSX.Element {
                   rows={2}
                 />
               </div>
+              {/* Service image upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Service Image (Optional)</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      setServiceImageFile(file ?? null);
+                      if (file) setServiceImagePreview(URL.createObjectURL(file));
+                      else setServiceImagePreview(null);
+                    }}
+                    className="block"
+                  />
+                  <div className="w-40 h-24 bg-gray-100 rounded overflow-hidden flex items-center justify-center border border-gray-200 relative">
+                    {serviceImageUploading ? (
+                      <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
+                    ) : serviceImagePreview ? (
+                      <img src={serviceImagePreview} alt="service preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <img
+                        src={SERVICE_IMAGE_PLACEHOLDER_URL}
+                        alt="placeholder"
+                        className="w-full h-full object-cover opacity-60"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Footer buttons of modal */}
               <div className="flex gap-3 pt-2 justify-end">
+
                 <button
                   type="button"
                   onClick={() => setShowServiceModal(false)}
